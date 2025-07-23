@@ -1171,8 +1171,154 @@ export default function OverlayPage() {
     return () => clearInterval(interval);
   }, [settings.speedTestActive]);
   
+  // === APPLE PAY OVERLAY STATE ===
+  const [showPaymentOverlay, setShowPaymentOverlay] = useState(false);
+  const [paymentInfo, setPaymentInfo] = useState<any>(null);
+  const [canMakeApplePay, setCanMakeApplePay] = useState(false);
+
+  // Check if Apple Pay is available
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.PaymentRequest) {
+      const supportedInstruments = [
+        {
+          supportedMethods: 'https://apple.com/apple-pay',
+          data: {
+            version: 3,
+            merchantIdentifier: 'merchant.com.example', // TODO: Replace with your merchant ID
+            merchantCapabilities: ['supports3DS'],
+            supportedNetworks: ['visa', 'masterCard', 'amex', 'discover'],
+            countryCode: 'US',
+          },
+        },
+      ];
+      const details = {
+        total: { label: 'Demo Payment', amount: { currency: 'USD', value: '1.00' } },
+      };
+      try {
+        const request = new window.PaymentRequest(supportedInstruments, details);
+        request.canMakePayment().then((result: any) => {
+          setCanMakeApplePay(!!result);
+        }).catch(() => setCanMakeApplePay(false));
+      } catch {
+        setCanMakeApplePay(false);
+      }
+    }
+  }, []);
+
+  // Handle Apple Pay payment
+  const handleApplePay = async () => {
+    if (!window.PaymentRequest) return;
+    const supportedInstruments = [
+      {
+        supportedMethods: 'https://apple.com/apple-pay',
+        data: {
+          version: 3,
+          merchantIdentifier: 'merchant.com.example', // TODO: Replace with your merchant ID
+          merchantCapabilities: ['supports3DS'],
+          supportedNetworks: ['visa', 'masterCard', 'amex', 'discover'],
+          countryCode: 'US',
+        },
+      },
+    ];
+    const details = {
+      total: { label: 'Demo Payment', amount: { currency: 'USD', value: '1.00' } },
+    };
+    try {
+      const request = new window.PaymentRequest(supportedInstruments, details);
+      const paymentResponse = await request.show();
+      // You would send paymentResponse.details to your server for processing here
+      setPaymentInfo({
+        methodName: paymentResponse.methodName,
+        details: paymentResponse.details,
+        payerName: paymentResponse.payerName,
+        payerEmail: paymentResponse.payerEmail,
+        payerPhone: paymentResponse.payerPhone,
+      });
+      setShowPaymentOverlay(true);
+      await paymentResponse.complete('success');
+    } catch (err) {
+      // Payment cancelled or failed
+      setPaymentInfo(null);
+      setShowPaymentOverlay(false);
+    }
+  };
+  
   return (
     <ErrorBoundary>
+      {/* Apple Pay Button */}
+      {canMakeApplePay && (
+        <div style={{ position: 'absolute', top: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 20000 }}>
+          <button
+            onClick={handleApplePay}
+            style={{
+              background: 'black',
+              color: 'white',
+              border: 'none',
+              borderRadius: 8,
+              padding: '12px 32px',
+              fontSize: 20,
+              fontWeight: 600,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+              cursor: 'pointer',
+            }}
+          >
+            Pay with <span style={{ fontWeight: 700 }}>Apple Pay</span>
+          </button>
+        </div>
+      )}
+      {/* Payment Overlay Modal */}
+      {showPaymentOverlay && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          background: 'rgba(0,0,0,0.7)',
+          zIndex: 30000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: 16,
+            padding: 32,
+            minWidth: 320,
+            boxShadow: '0 4px 24px rgba(0,0,0,0.25)',
+            textAlign: 'center',
+          }}>
+            <h2 style={{ marginBottom: 16 }}>Payment Successful!</h2>
+            <div style={{ marginBottom: 12 }}>
+              <strong>Method:</strong> {paymentInfo?.methodName || 'Apple Pay'}
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <strong>Payer Name:</strong> {paymentInfo?.payerName || 'N/A'}
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <strong>Email:</strong> {paymentInfo?.payerEmail || 'N/A'}
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <strong>Phone:</strong> {paymentInfo?.payerPhone || 'N/A'}
+            </div>
+            <button
+              onClick={() => setShowPaymentOverlay(false)}
+              style={{
+                marginTop: 16,
+                background: '#222',
+                color: 'white',
+                border: 'none',
+                borderRadius: 6,
+                padding: '8px 24px',
+                fontSize: 16,
+                cursor: 'pointer',
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
       <div 
         id="overlay" 
         className={shouldShowOverlay ? 'show' : ''}
