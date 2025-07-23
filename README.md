@@ -1,3 +1,6 @@
+[![GitHub license](https://img.shields.io/github/license/AlphaKing112/Overlayx)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/AlphaKing112/Overlayx)](https://github.com/AlphaKing112/Overlayx)
+
 # Livestreaming Overlay Control
 
 A modern, real-time overlay control panel and widget system for livestreamers. Designed for use with OBS, this site lets you manage and customize overlays such as battery, weather, heart rate, minimap, and more—live, from any device.
@@ -90,6 +93,3 @@ NEXT_PUBLIC_API_SECRET=your_secure_random_api_secret_here
 ---
 
 **Livestreaming Overlay Control** is open source and designed for creators who want full control over their stream overlays—no subscriptions, no bloat, just instant, live control.
-
-[![GitHub license](https://img.shields.io/github/license/AlphaKing112/Overlayx)](LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/AlphaKing112/Overlayx)](https://github.com/yourusername//AlphaKing112/Overlayx)
