@@ -1117,3 +1117,143 @@
     gap: 4px;
   }
 } 
+
+/* === Battery Overlay Move Controls (Horizontal Squares) === */
+.battery-move-controls-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+  margin: 12px 0;
+}
+.battery-move-btn-square {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  background: #23272f;
+  color: #fff;
+  border: none;
+  box-shadow: 0 2px 8px #0002;
+  font-size: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, box-shadow 0.2s;
+  touch-action: manipulation;
+  cursor: pointer;
+}
+.battery-move-btn-square:active,
+.battery-move-btn-square:focus {
+  background: #22c55e;
+  color: #fff;
+  box-shadow: 0 4px 16px #22c55e44;
+  outline: none;
+}
+@media (max-width: 600px) {
+  .battery-move-btn-square {
+    width: 56px;
+    height: 56px;
+    font-size: 2rem;
+  }
+  .battery-move-controls-row {
+    gap: 12px;
+  }
+} 
+
+/* === Info Display Position Buttons (Horizontal Squares) === */
+.info-pos-buttons-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+  margin: 12px 0;
+}
+.info-pos-btn-square {
+  width: 64px;
+  height: 48px;
+  border-radius: 10px;
+  background: #23272f;
+  color: #fff;
+  border: none;
+  box-shadow: 0 2px 8px #0002;
+  font-size: 1.1rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, box-shadow 0.2s;
+  touch-action: manipulation;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+}
+.info-pos-btn-square.selected,
+.info-pos-btn-square:active,
+.info-pos-btn-square:focus {
+  background: #22c55e;
+  color: #fff;
+  box-shadow: 0 4px 16px #22c55e44;
+  outline: none;
+}
+@media (max-width: 600px) {
+  .info-pos-btn-square {
+    width: 50vw;
+    max-width: 120px;
+    min-width: 80px;
+    height: 56px;
+    font-size: 1.2rem;
+  }
+  .info-pos-buttons-row {
+    gap: 12px;
+  }
+} 
+
+/* === Minimap Position Buttons (2x2 Grid Squares) === */
+.minimap-position-buttons-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  justify-content: center;
+  align-items: center;
+  margin: 12px 0;
+  max-width: 320px;
+}
+.minimap-pos-btn-square {
+  width: 120px;
+  height: 48px;
+  border-radius: 10px;
+  background: #23272f;
+  color: #fff;
+  border: none;
+  box-shadow: 0 2px 8px #0002;
+  font-size: 1.05rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, box-shadow 0.2s;
+  touch-action: manipulation;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  text-align: center;
+}
+.minimap-pos-btn-square.selected,
+.minimap-pos-btn-square:active,
+.minimap-pos-btn-square:focus {
+  background: #22c55e;
+  color: #fff;
+  box-shadow: 0 4px 16px #22c55e44;
+  outline: none;
+}
+@media (max-width: 600px) {
+  .minimap-pos-btn-square {
+    width: 44vw;
+    max-width: 140px;
+    min-width: 80px;
+    height: 56px;
+    font-size: 1.1rem;
+  }
+  .minimap-position-buttons-grid {
+    gap: 12px;
+    max-width: 100vw;
+  }
+} 

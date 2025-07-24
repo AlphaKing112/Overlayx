@@ -90,11 +90,27 @@ async function handlePOST(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  // Log request headers and user agent
+  const headersArr: [string, string][] = [];
+  request.headers.forEach((value, key) => {
+    headersArr.push([key, value]);
+  });
+  console.log('[DEBUG][SAVE] Headers:', JSON.stringify(headersArr));
+  console.log('[DEBUG][SAVE] User-Agent:', request.headers.get('user-agent'));
+
   // Try to verify authentication, but allow access if not authenticated
   const isAuthenticated = await verifyAuth();
   if (!isAuthenticated) {
-    console.warn('Not authenticated, but allowing access for settings save');
+    console.warn('[DEBUG][SAVE] Not authenticated, but allowing access for settings save');
   }
-  
+
+  // Log raw incoming settings
+  try {
+    const rawSettings = await request.clone().json();
+    console.log('[DEBUG][SAVE] Raw incoming settings:', rawSettings);
+  } catch (e) {
+    console.error('[DEBUG][SAVE] Failed to log raw incoming settings:', e);
+  }
+
   return handlePOST(request);
 } 

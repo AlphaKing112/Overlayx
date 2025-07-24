@@ -1,25 +1,35 @@
 // === 🔐 API AUTHENTICATION UTILITIES ===
 
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 
 // Centralized admin secret configuration
 export const ADMIN_SECRET = process.env.ADMIN_SECRET || process.env.ADMIN_PASSWORD || 'admin123';
 
 /**
- * Verify authentication using HTTP-only cookie
+ * Verify authentication using HTTP-only cookie or Authorization header
  * Centralized authentication for all API routes
  */
 export async function verifyAuth(): Promise<boolean> {
   const cookieStore = await cookies();
   const authToken = cookieStore.get('admin-auth');
-  
-  if (!authToken) {
-    return false;
-  }
-  
-  // Check against ADMIN_SECRET or fallback to ADMIN_PASSWORD
   const expectedSecret = ADMIN_SECRET || process.env.ADMIN_PASSWORD || 'admin123';
-  return authToken.value === expectedSecret;
+
+  // Check cookie
+  if (authToken && authToken.value === expectedSecret) {
+    return true;
+  }
+
+  // Check Authorization header (Bearer token)
+  const headerStore = await headers();
+  const authHeader = headerStore.get('authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.slice(7).trim();
+    if (token === expectedSecret) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 // === 📊 KV USAGE TRACKING ===

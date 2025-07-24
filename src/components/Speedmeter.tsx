@@ -81,7 +81,6 @@ const Speedmeter: React.FC<SpeedmeterProps> = ({ speed, size = 180, darkMode = f
   const tickRadiusOuter = radius + stroke / 2;
   const tickRadiusInner = tickRadiusOuter - tickLen;
   const mphColor = '#fff';
-  const mphSub = darkMode ? '#a3a3a3' : '#52525b';
 
   // Ticks
   const ticks = [];

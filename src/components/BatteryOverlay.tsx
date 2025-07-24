@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 
 interface BatteryData {
   level: number;
@@ -23,9 +23,13 @@ function getBatteryColor(level: number | null, charging: boolean) {
   return '#4cd964'; // green 20 and above
 }
 
-export default function BatteryOverlay() {
+interface BatteryOverlayProps {
+  pollingEnabled?: boolean;
+}
+
+export default function BatteryOverlay({ pollingEnabled = true }: BatteryOverlayProps) {
   const [battery, setBattery] = useState<BatteryData | null>(null);
-  const [pulse, setPulse] = useState(false);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -33,20 +37,16 @@ export default function BatteryOverlay() {
       const data = await fetchBattery();
       if (mounted) setBattery(data);
     };
-    getBattery();
-    const interval = setInterval(getBattery, 60000); // Poll every 60s
+    if (pollingEnabled) {
+      getBattery();
+      intervalRef.current = setInterval(getBattery, 30000); // Poll every 1 minute
+    }
     return () => {
       mounted = false;
-      clearInterval(interval);
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      intervalRef.current = null;
     };
-  }, []);
-
-  // Pulse animation for charging
-  useEffect(() => {
-    if (!(battery?.charging)) return;
-    const id = setInterval(() => setPulse(p => !p), 600);
-    return () => clearInterval(id);
-  }, [battery?.charging]);
+  }, [pollingEnabled]);
 
   const level = battery?.level ?? null;
   const percent = level !== null ? Math.round(level) : '--';

@@ -243,7 +243,91 @@ export default function AdminPage() {
         {/* Settings Container */}
         <div className="settings-container">
           <div className="settings-header">
-            <h2>Overlay Settings</h2>
+            <h2 style={{ display: 'inline-block', marginRight: 12 }}>
+              Overlay Settings
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch('/api/refresh-overlays', { method: 'POST' });
+                    if (res.ok) {
+                      showToastMessage('Refresh event sent to overlays!');
+                    } else {
+                      showToastMessage('Failed to refresh overlays.');
+                    }
+                  } catch {
+                    showToastMessage('Failed to refresh overlays.');
+                  }
+                }}
+                className="refresh-btn modern-green"
+                style={{
+                  marginLeft: 8,
+                  padding: '4px 12px',
+                  borderRadius: '6px',
+                  background: 'linear-gradient(90deg, #22c55e 0%, #16a34a 100%)',
+                  color: '#fff',
+                  fontWeight: 600,
+                  fontSize: 13,
+                  border: 'none',
+                  boxShadow: '0 1px 4px rgba(34,197,94,0.10)',
+                  transition: 'background 0.2s, box-shadow 0.2s',
+                  cursor: 'pointer',
+                  verticalAlign: 'middle',
+                  WebkitTextFillColor: '#fff', // Force white text even inside gradient headings
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                }}
+                onMouseOver={e => (e.currentTarget.style.background = 'linear-gradient(90deg, #16a34a 0%, #22c55e 100%)')}
+                onMouseOut={e => (e.currentTarget.style.background = 'linear-gradient(90deg, #22c55e 0%, #16a34a 100%)')}
+                title="Force all overlays to reload"
+              >
+                <span className="btn-icon" style={{ fontSize: 14, marginRight: 4, color: '#fff', WebkitTextFillColor: '#fff' }}>🔄</span>
+                <span className="btn-text" style={{ color: '#fff', WebkitTextFillColor: '#fff' }}>Refresh</span>
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch('/api/save-settings', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(DEFAULT_OVERLAY_SETTINGS),
+                    });
+                    if (res.ok) {
+                      showToastMessage('Overlay settings reset to defaults!');
+                      // Reload settings from server
+                      const getRes = await fetch('/api/get-settings');
+                      if (getRes.ok) {
+                        const data = await getRes.json();
+                        setSettings({ ...DEFAULT_OVERLAY_SETTINGS, ...data });
+                      }
+                    } else {
+                      showToastMessage('Failed to reset settings.');
+                    }
+                  } catch {
+                    showToastMessage('Failed to reset settings.');
+                  }
+                }}
+                style={{
+                  marginLeft: 8,
+                  padding: '4px 12px',
+                  borderRadius: '6px',
+                  background: 'none',
+                  color: '#22c55e',
+                  fontWeight: 600,
+                  fontSize: 13,
+                  border: '1.5px solid #22c55e',
+                  boxShadow: 'none',
+                  transition: 'background 0.2s, color 0.2s, border 0.2s',
+                  cursor: 'pointer',
+                  verticalAlign: 'middle',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                }}
+                title="Reset overlay settings to defaults"
+              >
+                <span className="btn-icon" style={{ fontSize: 14, marginRight: 4, color: '#22c55e' }}>↩️</span>
+                <span className="btn-text" style={{ color: '#22c55e' }}>Reset to Defaults</span>
+              </button>
+            </h2>
             <p>Toggle features on/off for your stream</p>
           </div>
 
@@ -484,85 +568,92 @@ export default function AdminPage() {
               </div>
             )}
 
-            {/* Minimap Size Slider - Only show if minimap is enabled */}
+            {/* Minimap sub-options: Only show if minimap is enabled */}
             {settings.showMinimap && (
-              <div className="setting-item sub-setting">
-                <div className="setting-info">
-                  <div className="setting-icon">🗺️</div>
-                  <div className="setting-details">
-                    <h3>Minimap Size</h3>
-                    <p>Adjust the minimap size (in pixels)</p>
+              <>
+                {/* Minimap Position */}
+                <div className="setting-item sub-setting">
+                  <div className="setting-info">
+                    <div className="setting-icon">📍</div>
+                    <div className="setting-details">
+                      <h3>Minimap Position</h3>
+                      <p>Move the minimap to any corner of the overlay</p>
+                    </div>
+                  </div>
+                  <div className="setting-control">
+                    <div className="minimap-position-buttons-grid">
+                      {[
+                        { value: 'top-left', label: 'Top Left' },
+                        { value: 'top-right', label: 'Top Right' },
+                        { value: 'bottom-left', label: 'Bottom Left' },
+                        { value: 'bottom-right', label: 'Bottom Right' },
+                      ].map(option => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={`minimap-pos-btn-square${settings.minimapPosition === option.value ? ' selected' : ''}`}
+                          onClick={() => handleSettingsChange({ minimapPosition: option.value as MinimapPosition })}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
-                <div className="setting-control">
-                  <input
-                    type="range"
-                    min={100}
-                    max={400}
-                    step={10}
-                    value={settings.mapboxMinimapSize ?? 200}
-                    onChange={e => handleSettingsChange({ mapboxMinimapSize: Number(e.target.value) })}
-                    style={{ width: '180px' }}
-                  />
-                  <span style={{ marginLeft: 12, minWidth: 40 }}>{settings.mapboxMinimapSize ?? 200}px</span>
-                </div>
-              </div>
-            )}
 
-            {/* Minimap Position Buttons - Only show if minimap is enabled */}
-            {settings.showMinimap && (
-              <div className="setting-item sub-setting">
-                <div className="setting-info">
-                  <div className="setting-icon">📍</div>
-                  <div className="setting-details">
-                    <h3>Minimap Position</h3>
-                    <p>Move the minimap to any corner of the overlay</p>
+                {/* Minimap Size */}
+                <div className="setting-item sub-setting">
+                  <div className="setting-info">
+                    <div className="setting-icon">📏</div>
+                    <div className="setting-details">
+                      <h3>Minimap Size</h3>
+                      <p>Scale the minimap overlay (in pixels)</p>
+                    </div>
                   </div>
-                </div>
-                <div className="setting-control">
-                  <div className="minimap-position-buttons">
-                    {[
-                      { value: 'top-left', label: 'Top Left' },
-                      { value: 'top-right', label: 'Top Right' },
-                      { value: 'bottom-left', label: 'Bottom Left' },
-                      { value: 'bottom-right', label: 'Bottom Right' },
-                    ].map(option => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        className={`minimap-pos-btn${settings.minimapPosition === option.value ? ' selected' : ''}`}
-                        onClick={() => handleSettingsChange({ minimapPosition: option.value as MinimapPosition })}
-                        style={{ marginRight: 8, marginBottom: 4 }}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Minimap Dark Mode Toggle - Only show if minimap is enabled */}
-            {settings.showMinimap && (
-              <div className="setting-item sub-setting">
-                <div className="setting-info">
-                  <div className="setting-icon">🌑</div>
-                  <div className="setting-details">
-                    <h3>Minimap Dark Mode</h3>
-                    <p>Switch the minimap to a dark style</p>
-                  </div>
-                </div>
-                <div className="setting-control">
-                  <label className="toggle-switch">
+                  <div className="setting-control">
                     <input
-                      type="checkbox"
-                      checked={settings.minimapDarkMode}
-                      onChange={e => handleSettingsChange({ minimapDarkMode: e.target.checked })}
+                      type="range"
+                      min={100}
+                      max={400}
+                      step={1}
+                      value={settings.mapboxMinimapSize ?? 200}
+                      onChange={e => handleSettingsChange({ mapboxMinimapSize: Number(e.target.value) })}
+                      style={{ width: 160 }}
                     />
-                    <span className="toggle-slider"></span>
-                  </label>
+                    <input
+                      type="number"
+                      min={100}
+                      max={400}
+                      step={1}
+                      value={settings.mapboxMinimapSize ?? 200}
+                      onChange={e => handleSettingsChange({ mapboxMinimapSize: Number(e.target.value) })}
+                      style={{ width: 60, marginLeft: 8 }}
+                    />
+                    <span style={{ marginLeft: 4 }}>px</span>
+                  </div>
                 </div>
-              </div>
+
+                {/* Minimap Dark Mode Toggle */}
+                <div className="setting-item sub-setting">
+                  <div className="setting-info">
+                    <div className="setting-icon">🌑</div>
+                    <div className="setting-details">
+                      <h3>Minimap Dark Mode</h3>
+                      <p>Switch the minimap to a dark style</p>
+                    </div>
+                  </div>
+                  <div className="setting-control">
+                    <label className="toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={settings.minimapDarkMode}
+                        onChange={e => handleSettingsChange({ minimapDarkMode: e.target.checked })}
+                      />
+                      <span className="toggle-slider"></span>
+                    </label>
+                  </div>
+                </div>
+              </>
             )}
 
             {/* Weather Display */}
@@ -627,105 +718,111 @@ export default function AdminPage() {
                 </label>
               </div>
             </div>
-            {/* Speedmeter Position Controls */}
-            <div className="setting-item sub-setting">
-              <div className="setting-info">
-                <div className="setting-icon">↔️</div>
-                <div className="setting-details">
-                  <h3>Speedmeter Position</h3>
-                  <p>Move the speedmeter overlay</p>
-                </div>
-              </div>
-              <div className="setting-control">
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                  <div>
-                    <button type="button" onClick={() => handleSettingsChange({ speedmeterOffsetY: clamp((settings.speedmeterOffsetY ?? 0) - 5, -maxY, maxY) })} title="Up">⬆️</button>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'row', gap: 4 }}>
-                    <button type="button" onClick={() => handleSettingsChange({ speedmeterOffsetX: clamp((settings.speedmeterOffsetX ?? 0) - 5, -maxX, maxX) })} title="Left">⬅️</button>
-                    <button type="button" onClick={() => handleSettingsChange({ speedmeterOffsetX: clamp((settings.speedmeterOffsetX ?? 0) + 5, -maxX, maxX) })} title="Right">➡️</button>
-                  </div>
-                  <div>
-                    <button type="button" onClick={() => handleSettingsChange({ speedmeterOffsetY: clamp((settings.speedmeterOffsetY ?? 0) + 5, -maxY, maxY) })} title="Down">⬇️</button>
-                  </div>
-                  <div style={{ fontSize: 13, marginTop: 4, color: '#666' }}>
-                    X: {settings.speedmeterOffsetX ?? 0}px, Y: {settings.speedmeterOffsetY ?? 0}px
-                  </div>
-                </div>
-              </div>
-            </div>
 
-            {/* Speedmeter Size Slider */}
-            <div className="setting-item sub-setting">
-              <div className="setting-info">
-                <div className="setting-icon">📏</div>
-                <div className="setting-details">
-                  <h3>Speedmeter Size</h3>
-                  <p>Scale the speedmeter overlay (in pixels)</p>
+            {/* Speedmeter Options - Only show if speedmeter is enabled */}
+            {settings.showSpeedmeter && (
+              <>
+                {/* Speedmeter Position Controls */}
+                <div className="setting-item sub-setting">
+                  <div className="setting-info">
+                    <div className="setting-icon">↔️</div>
+                    <div className="setting-details">
+                      <h3>Speedmeter Position</h3>
+                      <p>Move the speedmeter overlay</p>
+                    </div>
+                  </div>
+                  <div className="setting-control">
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                      <div>
+                        <button type="button" onClick={() => handleSettingsChange({ speedmeterOffsetY: clamp((settings.speedmeterOffsetY ?? 0) - 5, -maxY, maxY) })} title="Up">⬆️</button>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'row', gap: 4 }}>
+                        <button type="button" onClick={() => handleSettingsChange({ speedmeterOffsetX: clamp((settings.speedmeterOffsetX ?? 0) - 5, -maxX, maxX) })} title="Left">⬅️</button>
+                        <button type="button" onClick={() => handleSettingsChange({ speedmeterOffsetX: clamp((settings.speedmeterOffsetX ?? 0) + 5, -maxX, maxX) })} title="Right">➡️</button>
+                      </div>
+                      <div>
+                        <button type="button" onClick={() => handleSettingsChange({ speedmeterOffsetY: clamp((settings.speedmeterOffsetY ?? 0) + 5, -maxY, maxY) })} title="Down">⬇️</button>
+                      </div>
+                      <div style={{ fontSize: 13, marginTop: 4, color: '#666' }}>
+                        X: {settings.speedmeterOffsetX ?? 0}px, Y: {settings.speedmeterOffsetY ?? 0}px
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="setting-control">
-                <input
-                  type="range"
-                  min={80}
-                  max={320}
-                  step={1}
-                  value={settings.speedmeterSize ?? 140}
-                  onChange={e => handleSettingsChange({ speedmeterSize: Number(e.target.value) })}
-                  style={{ width: 160 }}
-                />
-                <input
-                  type="number"
-                  min={80}
-                  max={320}
-                  step={1}
-                  value={settings.speedmeterSize ?? 140}
-                  onChange={e => handleSettingsChange({ speedmeterSize: Number(e.target.value) })}
-                  style={{ width: 60, marginLeft: 8 }}
-                />
-                <span style={{ marginLeft: 4 }}>px</span>
-              </div>
-            </div>
 
-            {/* Speedmeter Speed Test Button */}
-            <div className="setting-item sub-setting">
-              <div className="setting-info">
-                <div className="setting-icon">🧪</div>
-                <div className="setting-details">
-                  <h3>Speed Test Animation</h3>
-                  <p>Animate the speedmeter for testing purposes</p>
+                {/* Speedmeter Size Slider */}
+                <div className="setting-item sub-setting">
+                  <div className="setting-info">
+                    <div className="setting-icon">📏</div>
+                    <div className="setting-details">
+                      <h3>Speedmeter Size</h3>
+                      <p>Scale the speedmeter overlay (in pixels)</p>
+                    </div>
+                  </div>
+                  <div className="setting-control">
+                    <input
+                      type="range"
+                      min={80}
+                      max={320}
+                      step={1}
+                      value={settings.speedmeterSize ?? 140}
+                      onChange={e => handleSettingsChange({ speedmeterSize: Number(e.target.value) })}
+                      style={{ width: 160 }}
+                    />
+                    <input
+                      type="number"
+                      min={80}
+                      max={320}
+                      step={1}
+                      value={settings.speedmeterSize ?? 140}
+                      onChange={e => handleSettingsChange({ speedmeterSize: Number(e.target.value) })}
+                      style={{ width: 60, marginLeft: 8 }}
+                    />
+                    <span style={{ marginLeft: 4 }}>px</span>
+                  </div>
                 </div>
-              </div>
-              <div className="setting-control">
-                <button
-                  type="button"
-                  onClick={() => handleSettingsChange({ speedTestActive: !settings.speedTestActive })}
-                  style={{ padding: '8px 18px', fontSize: 16 }}
-                >
-                  {settings.speedTestActive ? 'Stop Speed Test' : 'Start Speed Test'}
-                </button>
-              </div>
-            </div>
 
-            {/* Speedmeter Center Button */}
-            <div className="setting-item sub-setting">
-              <div className="setting-info">
-                <div className="setting-icon">🎯</div>
-                <div className="setting-details">
-                  <h3>Center Speedmeter</h3>
-                  <p>Reset the speedmeter overlay to the center</p>
+                {/* Speedmeter Speed Test Button */}
+                <div className="setting-item sub-setting">
+                  <div className="setting-info">
+                    <div className="setting-icon">🧪</div>
+                    <div className="setting-details">
+                      <h3>Speed Test Animation</h3>
+                      <p>Animate the speedmeter for testing purposes</p>
+                    </div>
+                  </div>
+                  <div className="setting-control">
+                    <button
+                      type="button"
+                      onClick={() => handleSettingsChange({ speedTestActive: !settings.speedTestActive })}
+                      style={{ padding: '8px 18px', fontSize: 16 }}
+                    >
+                      {settings.speedTestActive ? 'Stop Speed Test' : 'Start Speed Test'}
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <div className="setting-control">
-                <button
-                  type="button"
-                  onClick={() => handleSettingsChange({ speedmeterOffsetX: 0, speedmeterOffsetY: 0 })}
-                  style={{ padding: '8px 18px', fontSize: 16 }}
-                >
-                  Center Speedmeter
-                </button>
-              </div>
-            </div>
+
+                {/* Speedmeter Center Button */}
+                <div className="setting-item sub-setting">
+                  <div className="setting-info">
+                    <div className="setting-icon">🎯</div>
+                    <div className="setting-details">
+                      <h3>Center Speedmeter</h3>
+                      <p>Reset the speedmeter overlay to the center</p>
+                    </div>
+                  </div>
+                  <div className="setting-control">
+                    <button
+                      type="button"
+                      onClick={() => handleSettingsChange({ speedmeterOffsetX: 0, speedmeterOffsetY: 0 })}
+                      style={{ padding: '8px 18px', fontSize: 16 }}
+                    >
+                      Center Speedmeter
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* Info Display Position Buttons */}
             <div className="setting-item">
@@ -737,7 +834,7 @@ export default function AdminPage() {
                 </div>
               </div>
               <div className="setting-control">
-                <div className="info-pos-buttons">
+                <div className="info-pos-buttons-row" style={{ display: 'flex', gap: 8 }}>
                   {[
                     { value: 'left', label: 'Left' },
                     { value: 'right', label: 'Right' },
@@ -745,9 +842,8 @@ export default function AdminPage() {
                     <button
                       key={option.value}
                       type="button"
-                      className={`info-pos-btn${settings.infoDisplayPosition === option.value ? ' selected' : ''}`}
+                      className={`info-pos-btn-square${settings.infoDisplayPosition === option.value ? ' selected' : ''}`}
                       onClick={() => handleSettingsChange({ infoDisplayPosition: option.value as 'left' | 'right' })}
-                      style={{ marginRight: 8, marginBottom: 4 }}
                     >
                       {option.label}
                     </button>
@@ -775,13 +871,31 @@ export default function AdminPage() {
                   <span className="toggle-slider"></span>
                 </label>
                 {/* Battery Overlay Position Controls */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 8 }}>
-                  <button type="button" onClick={() => handleSettingsChange({ batteryOffsetY: (settings.batteryOffsetY || 0) - 5 })} style={{ marginBottom: 2 }}>↑</button>
-                  <div>
-                    <button type="button" onClick={() => handleSettingsChange({ batteryOffsetX: (settings.batteryOffsetX || 0) - 5 })} style={{ marginRight: 2 }}>←</button>
-                    <button type="button" onClick={() => handleSettingsChange({ batteryOffsetX: (settings.batteryOffsetX || 0) + 5 })} style={{ marginLeft: 2 }}>→</button>
-                  </div>
-                  <button type="button" onClick={() => handleSettingsChange({ batteryOffsetY: (settings.batteryOffsetY || 0) + 5 })} style={{ marginTop: 2 }}>↓</button>
+                <div className="battery-move-controls-row" style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                  <button
+                    type="button"
+                    className="battery-move-btn-square"
+                    aria-label="up"
+                    onClick={() => handleSettingsChange({ batteryOffsetY: (settings.batteryOffsetY || 0) - 5 })}
+                  >↑</button>
+                  <button
+                    type="button"
+                    className="battery-move-btn-square"
+                    aria-label="down"
+                    onClick={() => handleSettingsChange({ batteryOffsetY: (settings.batteryOffsetY || 0) + 5 })}
+                  >↓</button>
+                  <button
+                    type="button"
+                    className="battery-move-btn-square"
+                    aria-label="left"
+                    onClick={() => handleSettingsChange({ batteryOffsetX: (settings.batteryOffsetX || 0) - 5 })}
+                  >←</button>
+                  <button
+                    type="button"
+                    className="battery-move-btn-square"
+                    aria-label="right"
+                    onClick={() => handleSettingsChange({ batteryOffsetX: (settings.batteryOffsetX || 0) + 5 })}
+                  >→</button>
                 </div>
                 {/* Battery Overlay Scale Slider */}
                 <div style={{ marginTop: 8, width: 160 }}>

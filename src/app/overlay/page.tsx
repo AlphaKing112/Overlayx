@@ -112,7 +112,7 @@ const TIMERS = {
   MINIMAP_HIDE_DELAY: 30000, // 30 seconds - hide minimap if no GPS data
   SPEED_HIDE_DELAY: 30000, // 30 seconds - hide speed when below threshold (was 20s)
   API_COOLDOWN: 300000, // 5 minutes between API calls
-  POLLING_INTERVAL: 600000, // 10 minutes for settings polling (was 5)
+  POLLING_INTERVAL: 60000, // 1 minute for settings polling
 } as const;
 
 const THRESHOLDS = {
@@ -203,13 +203,14 @@ export default function OverlayPage() {
 
   // === 🎯 OVERLAY STATE ===
   const [time, setTime] = useState('Loading...');
-  const [date, setDate] = useState('Loading...');
   const [location, setLocation] = useState<{ label: string; countryCode: string; originalData?: LocationData } | null>(null);
   const [weather, setWeather] = useState<{ temp: number; icon: string; desc: string } | null>(null);
   const [speed, setSpeed] = useState(0);
   const [timezone, setTimezone] = useState<string | null>(null);
   const [sunrise, setSunrise] = useState<string | null>(null);
   const [sunset, setSunset] = useState<string | null>(null);
+  // Bitrate state (placeholder, replace with real data source if available)
+  const [bitrate, setBitrate] = useState<number | null>(null);
   
   // Loading states
   const [isLoading, setIsLoading] = useState({
@@ -372,7 +373,7 @@ export default function OverlayPage() {
       
       // Update date
       const formattedDate = dateFormatter.current!.format(now);
-      setDate(formattedDate);
+      // setDate(formattedDate); // Removed unused 'date' and its setter
     }
     
     // Update immediately
@@ -690,139 +691,131 @@ export default function OverlayPage() {
 
   // === 📡 RTIRL INTEGRATION ===
   useEffect(() => {
-    
-    // Add a small delay to let other connections establish first
-    const initTimeout = setTimeout(() => {
-      const script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/@rtirl/api@latest/lib/index.min.js';
-      script.async = true;
-      document.body.appendChild(script);
-      
-      script.onload = () => {
-        if (typeof window !== 'undefined' && window.RealtimeIRL && API_KEYS.RTIRL) {
-          
-          window.RealtimeIRL.forPullKey(API_KEYS.RTIRL).addListener((p: unknown) => {
-            if (!p || typeof p !== 'object') return;
-            const payload = p as RTIRLPayload;
-            
-            // Speed tracking for minimap
-            if (typeof payload.speed === 'number') {
-              setSpeed(payload.speed);
-              
+    // Add debug log for script loading
+    console.log('[DEBUG][RTIRL] Injecting RTIRL script...');
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/@rtirl/api@latest/lib/index.min.js';
+    script.async = true;
+    document.body.appendChild(script);
 
+    script.onload = () => {
+      console.log('[DEBUG][RTIRL] RTIRL script loaded');
+      if (typeof window !== 'undefined' && window.RealtimeIRL && API_KEYS.RTIRL) {
+        console.log('[DEBUG][RTIRL] RTIRL object found, setting up listener with key:', API_KEYS.RTIRL);
+        window.RealtimeIRL.forPullKey(API_KEYS.RTIRL).addListener((p: unknown) => {
+          console.log('[DEBUG][RTIRL] Received payload:', p);
+          if (!p || typeof p !== 'object') return;
+          const payload = p as RTIRLPayload;
+          
+          // Speed tracking for minimap
+          if (typeof payload.speed === 'number') {
+            setSpeed(payload.speed);
+            
+
+            
+            // Speed update received
+          }
+          
+          // RTIRL doesn't provide weather data - weather comes from Open-Meteo API
+          // Mark weather as loaded if we're still loading (weather will come from API)
+          if (currentIsLoading.current.weather) {
+            setIsLoading(prev => ({ ...prev, weather: false }));
+          }
+          
+          // Location data from RTIRL (basic coordinates only - detailed location comes from LocationIQ)
+          if (payload.location) {
+            // Only use RTIRL location data if we don't have detailed LocationIQ data
+            // RTIRL provides coordinates but not city/state names
+            const countryCode = payload.location.countryCode ? payload.location.countryCode.toLowerCase() : '';
+            if (countryCode && !location?.label) {
+              // Fallback: just show country if no detailed location data
+              setLocation({ label: shortenCountryName('', countryCode), countryCode });
+              setIsLoading(prev => ({ ...prev, location: false }));
+              lastLocationUpdate.current = Date.now();
               
-              // Speed update received
-            }
-            
-            // RTIRL doesn't provide weather data - weather comes from Open-Meteo API
-            // Mark weather as loaded if we're still loading (weather will come from API)
-            if (currentIsLoading.current.weather) {
-              setIsLoading(prev => ({ ...prev, weather: false }));
-            }
-            
-            // Location data from RTIRL (basic coordinates only - detailed location comes from LocationIQ)
-            if (payload.location) {
-              // Only use RTIRL location data if we don't have detailed LocationIQ data
-              // RTIRL provides coordinates but not city/state names
-              const countryCode = payload.location.countryCode ? payload.location.countryCode.toLowerCase() : '';
-              if (countryCode && !location?.label) {
-                // Fallback: just show country if no detailed location data
-                setLocation({ label: shortenCountryName('', countryCode), countryCode });
-                setIsLoading(prev => ({ ...prev, location: false }));
-                lastLocationUpdate.current = Date.now();
-                
-                // Basic location data received from RTIRL (country only)
-              } else if (currentIsLoading.current.location) {
-                // RTIRL has location but no valid country - mark as loaded
-                setIsLoading(prev => ({ ...prev, location: false }));
-                
-                // RTIRL has location but no valid country
-              }
+              // Basic location data received from RTIRL (country only)
             } else if (currentIsLoading.current.location) {
-              // RTIRL has no location data but we're still loading - mark as loaded
+              // RTIRL has location but no valid country - mark as loaded
               setIsLoading(prev => ({ ...prev, location: false }));
               
-              // RTIRL has no location data
+              // RTIRL has location but no valid country
             }
+          } else if (currentIsLoading.current.location) {
+            // RTIRL has no location data but we're still loading - mark as loaded
+            setIsLoading(prev => ({ ...prev, location: false }));
             
-            // Timezone data
-            if (payload.location?.timezone && payload.location.timezone !== currentTimezone.current) {
-              try {
-                formatter.current = new Intl.DateTimeFormat('en-US', {
-                  hour: 'numeric',
-                  minute: '2-digit',
-                  hour12: true,
-                  timeZone: payload.location.timezone,
-                });
-                dateFormatter.current = new Intl.DateTimeFormat('en-US', {
-                  month: 'long',
-                  day: 'numeric',
-                  year: 'numeric',
-                  timeZone: payload.location.timezone,
-                });
-                setTimezone(payload.location.timezone);
-                setIsLoading(prev => ({ ...prev, timezone: false }));
-                lastTimezoneUpdate.current = Date.now();
-                OverlayLogger.overlay('Timezone updated from RTIRL', { timezone: payload.location.timezone });
-              } catch (error) {
-                OverlayLogger.error('Failed to set timezone from RTIRL', error);
-                setIsLoading(prev => ({ ...prev, timezone: false }));
-              }
+            // RTIRL has no location data
+          }
+          
+          // Timezone data
+          if (payload.location?.timezone && payload.location.timezone !== currentTimezone.current) {
+            try {
+              formatter.current = new Intl.DateTimeFormat('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true,
+                timeZone: payload.location.timezone,
+              });
+              dateFormatter.current = new Intl.DateTimeFormat('en-US', {
+                month: 'long',
+                day: 'numeric',
+                year: 'numeric',
+                timeZone: payload.location.timezone,
+              });
+              setTimezone(payload.location.timezone);
+              setIsLoading(prev => ({ ...prev, timezone: false }));
+              lastTimezoneUpdate.current = Date.now();
+              OverlayLogger.overlay('Timezone updated from RTIRL', { timezone: payload.location.timezone });
+            } catch (error) {
+              OverlayLogger.error('Failed to set timezone from RTIRL', error);
+              setIsLoading(prev => ({ ...prev, timezone: false }));
             }
-            
-            // GPS coordinates
-            let lat: number | null = null;
-            let lon: number | null = null;
-            if (payload.location) {
-              // Handle both lat/lon and latitude/longitude formats
-              if ('lat' in payload.location && 'lon' in payload.location) {
-                lat = payload.location.lat;
-                lon = payload.location.lon;
-              } else if ('latitude' in payload.location && 'longitude' in payload.location) {
-                const loc = payload.location as { latitude: number; longitude: number };
-                lat = loc.latitude;
-                lon = loc.longitude;
-              }
+          }
+          
+          // GPS coordinates
+          let lat: number | null = null;
+          let lon: number | null = null;
+          if (payload.location) {
+            // Handle both lat/lon and latitude/longitude formats
+            if ('lat' in payload.location && 'lon' in payload.location) {
+              lat = payload.location.lat;
+              lon = payload.location.lon;
+            } else if ('latitude' in payload.location && 'longitude' in payload.location) {
+              const loc = payload.location as { latitude: number; longitude: number };
+              lat = loc.latitude;
+              lon = loc.longitude;
             }
-            
+          }
+          
                         if (lat !== null && lon !== null && isValidCoordinate(lat, lon)) {
-              updateFromCoordinates(lat, lon);
-              
-              // Update minimap coordinates
-              setMapCoords([lat, lon]);
-              
+            updateFromCoordinates(lat, lon);
+            
+            // Update minimap coordinates
+            setMapCoords([lat, lon]);
+            
 
-              
-              // Clear existing timeout and set new one (only if not manually enabled)
-              if (minimapTimeout.current) {
-                clearTimeout(minimapTimeout.current);
-              }
-              if (!currentSettings.current.showMinimap) {
-                // Only auto-hide if manual display is not enabled
-                minimapTimeout.current = setTimeout(() => {
-                  setMapCoords(null);
-                }, TIMERS.MINIMAP_HIDE_DELAY);
-              }
-            } else {
-              // RTIRL GPS failed
-              OverlayLogger.warn('RTIRL GPS data invalid');
-              OverlayLogger.error('No GPS data available');
+            
+            // Clear existing timeout and set new one (only if not manually enabled)
+            if (minimapTimeout.current) {
+              clearTimeout(minimapTimeout.current);
             }
-          });
-        } else {
-          setError('rtirl', 'RealtimeIRL API not available or missing API key');
-          OverlayLogger.warn('RealtimeIRL API not available or missing API key');
-        }
-      };
-    }, 1000); // 1 second delay to let other connections establish first
-    
-    return () => {
-      clearTimeout(initTimeout);
-      // Note: We can't easily remove the script tag as it may have already loaded
-      // The RTIRL library handles its own cleanup
+            if (!currentSettings.current.showMinimap) {
+              // Only auto-hide if manual display is not enabled
+              minimapTimeout.current = setTimeout(() => {
+                setMapCoords(null);
+              }, TIMERS.MINIMAP_HIDE_DELAY);
+            }
+          } else {
+            // RTIRL GPS failed
+            OverlayLogger.warn('RTIRL GPS data invalid');
+            OverlayLogger.error('No GPS data available');
+          }
+        });
+      } else {
+        console.warn('[DEBUG][RTIRL] RTIRL object or key missing', { RTIRL: window.RealtimeIRL, KEY: API_KEYS.RTIRL });
+      }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [updateFromCoordinates]); // Include updateFromCoordinates dependency
+  }, [API_KEYS.RTIRL]);
 
 
 
@@ -844,183 +837,145 @@ export default function OverlayPage() {
     let isPolling = false;
     let pollingInterval: NodeJS.Timeout | null = null;
     let lastKnownModified = Date.now(); // Track when we last received settings
+    const sseConnected = true;
     
+    function setReconnecting(val: boolean) {
+      setIsReconnecting(val);
+    }
+
     function startSmartPolling() {
       if (isPolling) return;
       isPolling = true;
-      
+      setReconnecting(true);
       pollingInterval = setInterval(async () => {
         try {
           const response = await authenticatedFetch(`/api/check-settings-update?lastModified=${lastKnownModified}`);
-          
           if (!response.ok) {
             if (response.status === 401) {
-              // Not authenticated - stop polling
               OverlayLogger.settings('Not authenticated, stopping polling');
               stopPolling();
+              setReconnecting(false);
               return;
             }
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
           }
-          
           const data = await response.json();
-          
           if (data.hasChanges) {
-            setSettings(data.settings);
+            setSettings({ ...DEFAULT_OVERLAY_SETTINGS, ...data.settings });
             lastKnownModified = data.lastModified;
-            
-            // Try to reconnect SSE after successful update
             if (reconnectAttempts > 0) {
               stopPolling();
               reconnectAttempts = 0;
               connectSSE();
             }
           } else {
-            // No changes - just update timestamp
             lastKnownModified = data.lastModified;
           }
         } catch (err) {
           OverlayLogger.error('Smart polling failed', err);
         }
-      }, TIMERS.POLLING_INTERVAL); // Check every 5 minutes instead of 60 seconds
+      }, TIMERS.POLLING_INTERVAL);
     }
-    
+
     function stopPolling() {
       if (pollingInterval) {
         clearInterval(pollingInterval);
         pollingInterval = null;
       }
       isPolling = false;
+      setReconnecting(false);
     }
-    
+
     function connectSSE() {
-      
-      // Load settings immediately as fallback
-      authenticatedFetch('/api/get-settings')
-        .then(res => {
-          if (!res.ok) {
-            if (res.status === 401) {
-              // Not authenticated - use default settings
-              OverlayLogger.settings('Not authenticated, using default settings');
-              setSettings(DEFAULT_OVERLAY_SETTINGS);
-              return;
-            }
-            throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-          }
-          return res.json();
-        })
-        .then(data => {
-          if (data) {
-            setSettings(data);
-            // Update last known modified timestamp
-            if (data._lastModified) {
-              lastKnownModified = data._lastModified;
-            }
-          }
-        })
-        .catch(err => {
-          OverlayLogger.error('Failed to load initial settings', err);
-          // Use default settings on error
-          setSettings(DEFAULT_OVERLAY_SETTINGS);
-        });
-      
-      if (eventSource) {
-        eventSource.close();
-      }
-      
+      if (eventSource) eventSource.close();
       eventSource = createAuthenticatedEventSource('/api/settings-stream');
-      
       eventSource.onopen = () => {
         reconnectAttempts = 0;
         stopPolling();
+        setReconnecting(false);
       };
-      
       eventSource.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          
-          if (data.type === 'heartbeat') {
-            return; // Ignore heartbeat messages
-          }
-          
-          if (data.type === 'settings_update') {
-            const { ...settingsOnly } = data;
-            setSettings(settingsOnly);
+          if (data.type === 'refresh') {
+            console.log('[DEBUG][REFRESH] Received refresh event, reloading overlay...');
+            window.location.reload();
             return;
           }
-          
-          // Handle initial settings with timestamp
+          if (data.type === 'heartbeat') return;
+          if (data.type === 'settings_update') {
+            const { ...settingsOnly } = data;
+            setSettings({ ...DEFAULT_OVERLAY_SETTINGS, ...settingsOnly });
+            return;
+          }
           if (data._type === 'initial') {
             const { _lastModified, ...settingsOnly } = data;
-            setSettings(settingsOnly);
+            setSettings({ ...DEFAULT_OVERLAY_SETTINGS, ...settingsOnly });
             if (_lastModified) {
               lastKnownModified = _lastModified;
             }
             return;
           }
-          
-          // Legacy format
-          setSettings(data);
+          setSettings({ ...DEFAULT_OVERLAY_SETTINGS, ...data });
         } catch (error) {
           OverlayLogger.error('Failed to parse settings update', error);
         }
       };
-      
       eventSource.onerror = (error) => {
         const readyState = eventSource?.readyState;
         OverlayLogger.error(`❌ SSE connection error (ReadyState: ${readyState})`, error);
-        
-        // If SSE fails, ensure we have default settings
         if (!settings.locationDisplay || settings.showWeather === undefined || settings.showMinimap === undefined) {
           OverlayLogger.settings('SSE failed, ensuring default settings are loaded');
           setSettings(DEFAULT_OVERLAY_SETTINGS);
         }
-        
-        // Handle different ready states
         if (readyState === EventSource.CLOSED) {
-          // Connection was closed, try to reconnect
           reconnectAttempts++;
           const delay = Math.min(1000 * Math.pow(2, Math.min(reconnectAttempts - 1, 5)), 30000);
-          
           OverlayLogger.settings(`SSE connection closed, attempting reconnect #${reconnectAttempts} in ${delay}ms`);
-          
-          // Start polling only after 5 failed attempts
           if (reconnectAttempts >= 5 && !isPolling) {
             OverlayLogger.settings('Multiple SSE failures, switching to polling mode');
             startSmartPolling();
           }
-          
+          setReconnecting(true);
           reconnectTimeout = setTimeout(() => {
+            OverlayLogger.settings('Reconnecting SSE after delay...');
             connectSSE();
           }, delay);
         } else if (readyState === EventSource.CONNECTING) {
-          // Still connecting, wait a bit longer
           OverlayLogger.settings('SSE still connecting, waiting...');
+          setReconnecting(true);
         } else {
-          // Unknown state, try to reconnect
           OverlayLogger.settings('SSE in unknown state, attempting reconnect');
           reconnectAttempts++;
-          const delay = 5000; // 5 second delay for unknown states
-          
+          const delay = 5000;
+          setReconnecting(true);
           reconnectTimeout = setTimeout(() => {
+            OverlayLogger.settings('Reconnecting SSE after unknown state...');
             connectSSE();
           }, delay);
         }
       };
     }
-    
+
     connectSSE();
-    
+
     return () => {
       if (eventSource) {
         eventSource.close();
+        eventSource = null;
+        OverlayLogger.settings('Closed EventSource on cleanup');
       }
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout);
+        reconnectTimeout = null;
+        OverlayLogger.settings('Cleared reconnect timeout on cleanup');
       }
       stopPolling();
     };
   }, []);
+
+  // Add state and UI for reconnecting indicator
+  const [isReconnecting, setIsReconnecting] = useState(false);
 
   // === 🗺️ MANUAL MINIMAP SETTING LOGIC ===
   useEffect(() => {
@@ -1172,282 +1127,430 @@ export default function OverlayPage() {
   }, [settings.speedTestActive]);
   
   // === APPLE PAY OVERLAY STATE ===
-  const [showPaymentOverlay, setShowPaymentOverlay] = useState(false);
-  const [paymentInfo, setPaymentInfo] = useState<any>(null);
-  const [canMakeApplePay, setCanMakeApplePay] = useState(false);
+  // const [showPaymentOverlay, setShowPaymentOverlay] = useState(false);
+  // type PaymentInfo = {
+  //   methodName: string;
+  //   details: unknown;
+  //   payerName?: string;
+  //   payerEmail?: string;
+  //   payerPhone?: string;
+  // };
+  // const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null);
+  // const [canMakeApplePay, setCanMakeApplePay] = useState(false);
 
-  // Check if Apple Pay is available
+  // // Check if Apple Pay is available
+  // useEffect(() => {
+  //   if (typeof window !== 'undefined' && window.PaymentRequest) {
+  //     const supportedInstruments = [
+  //       {
+  //         supportedMethods: 'https://apple.com/apple-pay',
+  //         data: {
+  //           version: 3,
+  //           merchantIdentifier: 'merchant.com.example', // TODO: Replace with your merchant ID
+  //           merchantCapabilities: ['supports3DS'],
+  //           supportedNetworks: ['visa', 'masterCard', 'amex', 'discover'],
+  //           countryCode: 'US',
+  //         },
+  //       },
+  //     ];
+  //     const details = {
+  //       total: { label: 'Demo Payment', amount: { currency: 'USD', value: '1.00' } },
+  //     };
+  //     try {
+  //       const request = new window.PaymentRequest(supportedInstruments, details);
+  //       request.canMakePayment().then((result: boolean | null) => {
+  //         setCanMakeApplePay(!!result);
+  //       }).catch(() => setCanMakeApplePay(false));
+  //     } catch {
+  //       setCanMakeApplePay(false);
+  //     }
+  //   }
+  // }, []);
+
+  // // Handle Apple Pay payment
+  // const handleApplePay = async () => {
+  //   if (!window.PaymentRequest) return;
+  //   const supportedInstruments = [
+  //     {
+  //       supportedMethods: 'https://apple.com/apple-pay',
+  //       data: {
+  //         version: 3,
+  //         merchantIdentifier: 'merchant.com.example', // TODO: Replace with your merchant ID
+  //         merchantCapabilities: ['supports3DS'],
+  //         supportedNetworks: ['visa', 'masterCard', 'amex', 'discover'],
+  //         countryCode: 'US',
+  //       },
+  //     },
+  //   ];
+  //   const details = {
+  //     total: { label: 'Demo Payment', amount: { currency: 'USD', value: '1.00' } },
+  //   };
+  //   try {
+  //     const request = new window.PaymentRequest(supportedInstruments, details);
+  //     const paymentResponse = await request.show();
+  //     // You would send paymentResponse.details to your server for processing here
+  //     setPaymentInfo({
+  //       methodName: paymentResponse.methodName,
+  //       details: paymentResponse.details,
+  //       payerName: paymentResponse.payerName ?? undefined,
+  //       payerEmail: paymentResponse.payerEmail ?? undefined,
+  //       payerPhone: paymentResponse.payerPhone ?? undefined,
+  //     });
+  //     setShowPaymentOverlay(true);
+  //     await paymentResponse.complete('success');
+  //   } catch (err) {
+  //     // Payment cancelled or failed
+  //     setPaymentInfo(null);
+  //     setShowPaymentOverlay(false);
+  //   }
+  // };
+  
+  // === NOALBS SRT Bitrate Polling ===
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.PaymentRequest) {
-      const supportedInstruments = [
-        {
-          supportedMethods: 'https://apple.com/apple-pay',
-          data: {
-            version: 3,
-            merchantIdentifier: 'merchant.com.example', // TODO: Replace with your merchant ID
-            merchantCapabilities: ['supports3DS'],
-            supportedNetworks: ['visa', 'masterCard', 'amex', 'discover'],
-            countryCode: 'US',
-          },
-        },
-      ];
-      const details = {
-        total: { label: 'Demo Payment', amount: { currency: 'USD', value: '1.00' } },
-      };
+    let interval: NodeJS.Timeout | null = null;
+    let isUnmounted = false;
+
+    async function pollBitrate() {
       try {
-        const request = new window.PaymentRequest(supportedInstruments, details);
-        request.canMakePayment().then((result: any) => {
-          setCanMakeApplePay(!!result);
-        }).catch(() => setCanMakeApplePay(false));
-      } catch {
-        setCanMakeApplePay(false);
+        const res = await fetch('/api/noalbs-proxy');
+        if (!res.ok) throw new Error('Failed to fetch stats');
+        const data = await res.json();
+
+        // Find the first connected publisher
+        let foundBitrate: number | null = null;
+        let isLive = false;
+        if (data.publishers) {
+          for (const key of Object.keys(data.publishers)) {
+            const pub = data.publishers[key];
+            if (pub.connected) {
+              foundBitrate = pub.bitrate;
+              isLive = true;
+              break;
+            }
+          }
+        }
+        if (!isUnmounted) {
+          setBitrate(isLive && foundBitrate ? foundBitrate : null);
+        }
+      } catch (e) {
+        if (!isUnmounted) setBitrate(null);
       }
     }
+
+    pollBitrate();
+    interval = setInterval(pollBitrate, 60000); // 1 minute
+    return () => {
+      isUnmounted = true;
+      if (interval) clearInterval(interval);
+    };
   }, []);
 
-  // Handle Apple Pay payment
-  const handleApplePay = async () => {
-    if (!window.PaymentRequest) return;
-    const supportedInstruments = [
-      {
-        supportedMethods: 'https://apple.com/apple-pay',
-        data: {
-          version: 3,
-          merchantIdentifier: 'merchant.com.example', // TODO: Replace with your merchant ID
-          merchantCapabilities: ['supports3DS'],
-          supportedNetworks: ['visa', 'masterCard', 'amex', 'discover'],
-          countryCode: 'US',
-        },
-      },
-    ];
-    const details = {
-      total: { label: 'Demo Payment', amount: { currency: 'USD', value: '1.00' } },
-    };
-    try {
-      const request = new window.PaymentRequest(supportedInstruments, details);
-      const paymentResponse = await request.show();
-      // You would send paymentResponse.details to your server for processing here
-      setPaymentInfo({
-        methodName: paymentResponse.methodName,
-        details: paymentResponse.details,
-        payerName: paymentResponse.payerName,
-        payerEmail: paymentResponse.payerEmail,
-        payerPhone: paymentResponse.payerPhone,
-      });
-      setShowPaymentOverlay(true);
-      await paymentResponse.complete('success');
-    } catch (err) {
-      // Payment cancelled or failed
-      setPaymentInfo(null);
-      setShowPaymentOverlay(false);
+  useEffect(() => {
+    if (typeof window !== 'undefined' && navigator.userAgent.includes('OBS')) {
+      console.log('[DEBUG][OBS] Overlay running in OBS');
+      console.log('[DEBUG][OBS] Settings:', settings);
     }
-  };
-  
+  }, [settings]);
+
   return (
-    <ErrorBoundary>
-      {/* Apple Pay Button */}
-      {canMakeApplePay && (
-        <div style={{ position: 'absolute', top: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 20000 }}>
-          <button
-            onClick={handleApplePay}
-            style={{
-              background: 'black',
-              color: 'white',
-              border: 'none',
-              borderRadius: 8,
-              padding: '12px 32px',
-              fontSize: 20,
-              fontWeight: 600,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-              cursor: 'pointer',
-            }}
-          >
-            Pay with <span style={{ fontWeight: 700 }}>Apple Pay</span>
-          </button>
-        </div>
-      )}
-      {/* Payment Overlay Modal */}
-      {showPaymentOverlay && (
+    <>
+      {isReconnecting && (
         <div style={{
           position: 'fixed',
           top: 0,
           left: 0,
           width: '100vw',
-          height: '100vh',
-          background: 'rgba(0,0,0,0.7)',
-          zIndex: 30000,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
+          background: 'rgba(34,197,94,0.95)',
+          color: '#fff',
+          fontWeight: 700,
+          fontSize: 18,
+          textAlign: 'center',
+          zIndex: 99999,
+          padding: '8px 0',
+          letterSpacing: 1,
+          boxShadow: '0 2px 8px rgba(34,197,94,0.15)',
         }}>
+          Reconnecting to overlay server…
+        </div>
+      )}
+      <ErrorBoundary>
+        {/* Apple Pay Button */}
+        {/* {canMakeApplePay && (
+          <button onClick={handleApplePay} className="apple-pay-btn">Apple Pay</button>
+        )} */}
+        {/* Payment Overlay Modal */}
+        {/* {showPaymentOverlay && (
           <div style={{
-            background: 'white',
-            borderRadius: 16,
-            padding: 32,
-            minWidth: 320,
-            boxShadow: '0 4px 24px rgba(0,0,0,0.25)',
-            textAlign: 'center',
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            background: 'rgba(0,0,0,0.7)',
+            zIndex: 30000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}>
-            <h2 style={{ marginBottom: 16 }}>Payment Successful!</h2>
-            <div style={{ marginBottom: 12 }}>
-              <strong>Method:</strong> {paymentInfo?.methodName || 'Apple Pay'}
+            <div style={{
+              background: 'white',
+              borderRadius: 16,
+              padding: 32,
+              minWidth: 320,
+              boxShadow: '0 4px 24px rgba(0,0,0,0.25)',
+              textAlign: 'center',
+            }}>
+              <h2 style={{ marginBottom: 16 }}>Payment Successful!</h2>
+              <div style={{ marginBottom: 12 }}>
+                <strong>Method:</strong> {paymentInfo?.methodName || 'Apple Pay'}
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <strong>Payer Name:</strong> {paymentInfo?.payerName || 'N/A'}
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <strong>Email:</strong> {paymentInfo?.payerEmail || 'N/A'}
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <strong>Phone:</strong> {paymentInfo?.payerPhone || 'N/A'}
+              </div>
+              <button
+                onClick={() => setShowPaymentOverlay(false)}
+                style={{
+                  marginTop: 16,
+                  background: '#222',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 6,
+                  padding: '8px 24px',
+                  fontSize: 16,
+                  cursor: 'pointer',
+                }}
+              >
+                Close
+              </button>
             </div>
-            <div style={{ marginBottom: 12 }}>
-              <strong>Payer Name:</strong> {paymentInfo?.payerName || 'N/A'}
-            </div>
-            <div style={{ marginBottom: 12 }}>
-              <strong>Email:</strong> {paymentInfo?.payerEmail || 'N/A'}
-            </div>
-            <div style={{ marginBottom: 12 }}>
-              <strong>Phone:</strong> {paymentInfo?.payerPhone || 'N/A'}
-            </div>
-            <button
-              onClick={() => setShowPaymentOverlay(false)}
-              style={{
-                marginTop: 16,
-                background: '#222',
-                color: 'white',
-                border: 'none',
-                borderRadius: 6,
-                padding: '8px 24px',
-                fontSize: 16,
-                cursor: 'pointer',
-              }}
-            >
-              Close
-            </button>
+          </div>
+        )} */}
+        <div 
+          id="overlay" 
+          className={shouldShowOverlay ? 'show' : ''}
+        >
+
+        {/* Battery Overlay - Top Right */}
+        {settings.showBatteryOverlay && (
+          <div style={{
+            position: 'absolute',
+            top: 16 + (settings.batteryOffsetY || 0),
+            left: 16 + (settings.batteryOffsetX || 0),
+            zIndex: 10001,
+            transform: `scale(${settings.batteryScale || 1})`,
+            transformOrigin: 'top left',
+          }}>
+            <BatteryOverlay pollingEnabled={settings.showBatteryOverlay} />
+          </div>
+        )}
+        {/* Left Side - Date Only */}
+        <div className="top-left">
+          <div className={`overlay-container${settings.showOverlayBackground ? '' : ' no-bg'}`}> 
+            {/* Date Display hidden */}
+            {/* {settings.showDate && timezone && (
+              <div className="date date-left">
+                {date}
+              </div>
+            )} */}
           </div>
         </div>
-      )}
-      <div 
-        id="overlay" 
-        className={shouldShowOverlay ? 'show' : ''}
-      >
 
-      {/* Battery Overlay - Top Right */}
-      {settings.showBatteryOverlay && (
-        <div style={{
-          position: 'absolute',
-          top: 16 + (settings.batteryOffsetY || 0),
-          left: 16 + (settings.batteryOffsetX || 0),
-          zIndex: 10001,
-          transform: `scale(${settings.batteryScale || 1})`,
-          transformOrigin: 'top left',
-        }}>
-          <BatteryOverlay />
-        </div>
-      )}
-      {/* Left Side - Date Only */}
-      <div className="top-left">
-        <div className={`overlay-container${settings.showOverlayBackground ? '' : ' no-bg'}`}> 
-          {/* Date Display hidden */}
-          {/* {settings.showDate && timezone && (
-            <div className="date date-left">
-              {date}
+        {/* Heart Rate - Top Right, Separate Overlay */}
+        <div className="top-right">
+          <div className={`overlay-container${settings.showOverlayBackground && isHeartRateVisible ? '' : ' no-bg'}`}> 
+            {/* Bitrate Indicator (shows when live, placeholder for now) */}
+            {bitrate !== null && (
+              <div style={{
+                background: 'rgba(0,0,0,0.7)',
+                color: '#fff',
+                padding: '4px 12px',
+                borderRadius: 8,
+                fontSize: 18,
+                fontWeight: 600,
+                marginBottom: 8,
+                display: 'inline-block',
+                zIndex: 2,
+              }}>
+                Bitrate: {bitrate > 1000 ? `${(bitrate/1000).toFixed(1)} Mbps` : `${bitrate} kbps`}
+              </div>
+            )}
+            <div ref={heartRateRef}>
+              <HeartRateMonitor 
+                pulsoidToken={API_KEYS.PULSOID} 
+                onVisibilityChange={setIsHeartRateVisible}
+              />
             </div>
-          )} */}
+          </div>
         </div>
-      </div>
 
-      {/* Heart Rate - Top Right, Separate Overlay */}
-      <div className="top-right">
-        <div className={`overlay-container${settings.showOverlayBackground && isHeartRateVisible ? '' : ' no-bg'}`}> 
-          <div ref={heartRateRef}>
-            <HeartRateMonitor 
-              pulsoidToken={API_KEYS.PULSOID} 
-              onVisibilityChange={setIsHeartRateVisible}
+        {/* Info Display - Left or Right */}
+        {(isLocationEnabled || settings.showWeather) && (
+          <div className={settings.infoDisplayPosition === 'left' ? 'top-left' : 'top-right'}>
+            <div className={`overlay-container${settings.showOverlayBackground ? '' : ' no-bg'}`}> 
+              {/* Time Display (moved) */}
+              {timezone && (
+                <div className="time time-right">
+                  <div className="time-display">
+                    <span className="time-main">{time.split(' ')[0]}</span>
+                    <span className="time-ampm">{time.split(' ')[1]}</span>
+                  </div>
+                </div>
+              )}
+              {settings.locationDisplay && (
+                <div className="location" style={{ display: settings.locationDisplay === 'hidden' ? 'none' : 'flex' }}>
+                  {isLoading.location ? (
+                    <span>Loading location...</span>
+                  ) : (
+                    <>
+                      {location && location.label ? location.label : ''}
+                      {location && location.countryCode && settings.locationDisplay !== 'hidden' && (
+                        <Image
+                          src={`https://flagcdn.com/${location.countryCode}.svg`}
+                          alt={`Country: ${location.label}`}
+                          width={32}
+                          height={20}
+                          unoptimized
+                          priority
+                          loading="eager"
+                          className="location-flag"
+                        />
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+              {settings.showWeather && (
+                <div className="weather">
+                  {isLoading.weather ? (
+                    <div className="weather-container">
+                      <div className="weather-content">
+                        <div className="weather-description">Loading weather...</div>
+                        <div className="weather-temperature">--°C / --°F</div>
+                      </div>
+                    </div>
+                  ) : weather ? (
+                    <div className="weather-container">
+                      <div className="weather-content">
+                        <div className="weather-description">
+                          {weather.desc.toUpperCase()}
+                          <Image
+                            src={weatherIconMap[getWeatherIcon(weather.icon, timezone, sunrise, sunset)] || '/weather-icons/not-available.svg'}
+                            alt={capitalizeWords(weather.desc)}
+                            width={24}
+                            height={24}
+                            style={{ marginLeft: 6, verticalAlign: 'middle' }}
+                            className="weather-icon"
+                            draggable={false}
+                          />
+                        </div>
+                        <div className="weather-temperature">
+                          {celsiusToFahrenheit(weather.temp)}°F
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Stream Movement - GPS Minimap (separated) */}
+        {shouldShowMinimap() && mapCoords && (
+          <div
+            className="minimap"
+            style={{
+              position: 'absolute',
+              ...(settings.minimapPosition === 'top-left' && { top: 16, left: 16, right: 'auto', bottom: 'auto' }),
+              ...(settings.minimapPosition === 'top-right' && { top: 16, right: 16, left: 'auto', bottom: 'auto' }),
+              ...(settings.minimapPosition === 'bottom-left' && { bottom: 16, left: 16, right: 'auto', top: 'auto' }),
+              ...(settings.minimapPosition === 'bottom-right' && { bottom: 16, right: 16, left: 'auto', top: 'auto' }),
+              zIndex: 10000,
+            }}
+          >
+            {/* Compute dark mode: manual toggle OR after 7pm in overlay timezone */}
+            {(() => {
+              let hour = 0;
+              if (timezone) {
+                const now = new Date();
+                const formatter = new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: timezone });
+                hour = Number(formatter.format(now));
+              } else {
+                hour = new Date().getHours();
+              }
+              const autoDark = hour >= 19;
+              const darkMode = settings.minimapDarkMode || (!settings.minimapDarkMode && autoDark);
+              return (
+                <MapboxMinimap 
+                  lat={mapCoords[0]} 
+                  lon={mapCoords[1]} 
+                  isVisible={true}
+                  size={settings.mapboxMinimapSize ?? 200}
+                  darkMode={darkMode}
+                />
+              );
+            })()}
+            {/* Show speed if autoshow is active and minimap is visible due to speed */}
+            {settings.minimapSpeedBased && speedBasedVisible.current && (
+              <div className="minimap-speed" style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.7)', color: '#fff', padding: '4px 10px', borderRadius: 8, fontSize: 18, fontWeight: 600, zIndex: 2 }}>
+                {`${(speed * 3.6).toFixed(1)} km/h`}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      {(settings.customUrls || []).filter(overlay => overlay.enabled).map((overlay, idx) => (
+        overlay.url ? (
+          <div
+            key={idx}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              width: '100vw',
+              height: '100vh',
+              pointerEvents: 'none',
+              zIndex: 99999 + idx,
+            }}
+          >
+            <iframe
+              src={overlay.url.startsWith('http') ? overlay.url : `https://${overlay.url}`}
+              style={{
+                width: '100vw',
+                height: '100vh',
+                border: 'none',
+                display: 'block',
+                pointerEvents: 'auto',
+                transform: `translate(${overlay.offsetX || 0}px, ${overlay.offsetY || 0}px) scale(${overlay.zoom || 1})`,
+                transformOrigin: 'top left',
+                overflow: 'hidden',
+              }}
+              allowFullScreen
+              loading="lazy"
+              sandbox="allow-scripts allow-same-origin allow-popups"
             />
           </div>
-        </div>
-      </div>
-
-      {/* Info Display - Left or Right */}
-      {(isLocationEnabled || settings.showWeather) && (
-        <div className={settings.infoDisplayPosition === 'left' ? 'top-left' : 'top-right'}>
-          <div className={`overlay-container${settings.showOverlayBackground ? '' : ' no-bg'}`}> 
-            {/* Time Display (moved) */}
-            {timezone && (
-              <div className="time time-right">
-                <div className="time-display">
-                  <span className="time-main">{time.split(' ')[0]}</span>
-                  <span className="time-ampm">{time.split(' ')[1]}</span>
-                </div>
-              </div>
-            )}
-            {settings.locationDisplay && (
-              <div className="location" style={{ display: settings.locationDisplay === 'hidden' ? 'none' : 'flex' }}>
-                {isLoading.location ? (
-                  <span>Loading location...</span>
-                ) : (
-                  <>
-                    {location && location.label ? location.label : ''}
-                    {location && location.countryCode && settings.locationDisplay !== 'hidden' && (
-                      <Image
-                        src={`https://flagcdn.com/${location.countryCode}.svg`}
-                        alt={`Country: ${location.label}`}
-                        width={32}
-                        height={20}
-                        unoptimized
-                        priority
-                        loading="eager"
-                        className="location-flag"
-                      />
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-            {settings.showWeather && (
-              <div className="weather">
-                {isLoading.weather ? (
-                  <div className="weather-container">
-                    <div className="weather-content">
-                      <div className="weather-description">Loading weather...</div>
-                      <div className="weather-temperature">--°C / --°F</div>
-                    </div>
-                  </div>
-                ) : weather ? (
-                  <div className="weather-container">
-                    <div className="weather-content">
-                      <div className="weather-description">
-                        {weather.desc.toUpperCase()}
-                        <img
-                          src={weatherIconMap[getWeatherIcon(weather.icon, timezone, sunrise, sunset)] || '/weather-icons/not-available.svg'}
-                          alt={capitalizeWords(weather.desc)}
-                          width={24}
-                          height={24}
-                          style={{ marginLeft: 6, verticalAlign: 'middle' }}
-                          className="weather-icon"
-                          draggable={false}
-                        />
-                      </div>
-                      <div className="weather-temperature">
-                        {celsiusToFahrenheit(weather.temp)}°F
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Stream Movement - GPS Minimap (separated) */}
-      {shouldShowMinimap() && mapCoords && (
+        ) : null
+      ))}
+      {/* Speedmeter Overlay - visible if speedTestActive is on, or if enabled in settings and speed > 10 mph */}
+      {(settings.speedTestActive || (settings.showSpeedmeter && speed * 2.23694 > 10)) && (
         <div
-          className="minimap"
           style={{
-            position: 'absolute',
-            ...(settings.minimapPosition === 'top-left' && { top: 16, left: 16, right: 'auto', bottom: 'auto' }),
-            ...(settings.minimapPosition === 'top-right' && { top: 16, right: 16, left: 'auto', bottom: 'auto' }),
-            ...(settings.minimapPosition === 'bottom-left' && { bottom: 16, left: 16, right: 'auto', top: 'auto' }),
-            ...(settings.minimapPosition === 'bottom-right' && { bottom: 16, right: 16, left: 'auto', top: 'auto' }),
-            zIndex: 10000,
+            position: 'fixed',
+            left: '50%',
+            top: '50%',
+            transform: `translate(-50%, -50%) translate(${clampedOffsetX}px, ${clampedOffsetY}px)`,
+            zIndex: 12000,
+            pointerEvents: 'none',
           }}
         >
-          {/* Compute dark mode: manual toggle OR after 7pm in overlay timezone */}
-          {(() => {
+          <Speedmeter speed={settings.speedTestActive ? testSpeed : speed} size={settings.speedmeterSize ?? 140} darkMode={(() => {
             let hour = 0;
             if (timezone) {
               const now = new Date();
@@ -1457,85 +1560,11 @@ export default function OverlayPage() {
               hour = new Date().getHours();
             }
             const autoDark = hour >= 19;
-            const darkMode = settings.minimapDarkMode || (!settings.minimapDarkMode && autoDark);
-            return (
-              <MapboxMinimap 
-                lat={mapCoords[0]} 
-                lon={mapCoords[1]} 
-                isVisible={true}
-                size={settings.mapboxMinimapSize ?? 200}
-                darkMode={darkMode}
-              />
-            );
-          })()}
-          {/* Show speed if autoshow is active and minimap is visible due to speed */}
-          {settings.minimapSpeedBased && speedBasedVisible.current && (
-            <div className="minimap-speed" style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.7)', color: '#fff', padding: '4px 10px', borderRadius: 8, fontSize: 18, fontWeight: 600, zIndex: 2 }}>
-              {`${(speed * 3.6).toFixed(1)} km/h`}
-            </div>
-          )}
+            return settings.minimapDarkMode || (!settings.minimapDarkMode && autoDark);
+          })()} />
         </div>
       )}
-    </div>
-    {(settings.customUrls || []).filter(overlay => overlay.enabled).map((overlay, idx) => (
-      overlay.url ? (
-        <div
-          key={idx}
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            width: '100vw',
-            height: '100vh',
-            pointerEvents: 'none',
-            zIndex: 99999 + idx,
-          }}
-        >
-          <iframe
-            src={overlay.url.startsWith('http') ? overlay.url : `https://${overlay.url}`}
-            style={{
-              width: '100vw',
-              height: '100vh',
-              border: 'none',
-              display: 'block',
-              pointerEvents: 'auto',
-              transform: `translate(${overlay.offsetX || 0}px, ${overlay.offsetY || 0}px) scale(${overlay.zoom || 1})`,
-              transformOrigin: 'top left',
-              overflow: 'hidden',
-            }}
-            allowFullScreen
-            loading="lazy"
-            sandbox="allow-scripts allow-same-origin allow-popups"
-          />
-        </div>
-      ) : null
-    ))}
-    {/* Speedmeter Overlay - visible if speedTestActive is on, or if enabled in settings and speed > 10 mph */}
-    {(settings.speedTestActive || (settings.showSpeedmeter && speed * 2.23694 > 10)) && (
-      <div
-        style={{
-          position: 'fixed',
-          left: '50%',
-          top: '50%',
-          transform: `translate(-50%, -50%) translate(${clampedOffsetX}px, ${clampedOffsetY}px)`,
-          zIndex: 12000,
-          pointerEvents: 'none',
-        }}
-      >
-        <Speedmeter speed={settings.speedTestActive ? testSpeed : speed} size={settings.speedmeterSize ?? 140} darkMode={(() => {
-          let hour = 0;
-          if (timezone) {
-            const now = new Date();
-            const formatter = new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: timezone });
-            hour = Number(formatter.format(now));
-          } else {
-            hour = new Date().getHours();
-          }
-          const autoDark = hour >= 19;
-          return settings.minimapDarkMode || (!settings.minimapDarkMode && autoDark);
-        })()} />
-      </div>
-    )}
-    </ErrorBoundary>
+      </ErrorBoundary>
+    </>
   );
 }

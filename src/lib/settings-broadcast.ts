@@ -120,3 +120,36 @@ export function sendHeartbeat() {
     console.log(`[HEARTBEAT] Cleaned up ${deadConnections.length} dead connections, ${connections.size} remaining`);
   }
 } 
+
+declare global {
+  // Add a type for sseConnections
+  var sseConnections: Record<string, ReadableStreamDefaultController<Uint8Array>> | undefined;
+}
+
+// Broadcast a refresh event to all connected overlays
+export function broadcastRefresh() {
+  const encoder = new TextEncoder();
+  const refreshEvent = JSON.stringify({ type: 'refresh', timestamp: Date.now() });
+  let successCount = 0;
+  let failureCount = 0;
+  const deadConnections: string[] = [];
+
+  connections.forEach((connectionInfo, connectionId) => {
+    try {
+      connectionInfo.controller.enqueue(encoder.encode(`data: ${refreshEvent}\n\n`));
+      successCount++;
+      console.log(`[BROADCAST] ✅ Sent refresh to connection ${connectionId}`);
+    } catch (e) {
+      deadConnections.push(connectionId);
+      failureCount++;
+      console.error(`[BROADCAST] Failed to send refresh to ${connectionId}:`, e);
+    }
+  });
+
+  // Clean up dead connections
+  deadConnections.forEach(connectionId => {
+    connections.delete(connectionId);
+  });
+
+  console.log(`[BROADCAST] Sent refresh event to ${successCount} overlays, ${failureCount} failed, ${connections.size} remaining active connections`);
+} 
