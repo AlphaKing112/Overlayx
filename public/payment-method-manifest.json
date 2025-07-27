@@ -1,0 +1,4 @@
+{
+  "default_applications": ["payment-tracker-app"],
+  "supported_origins": ["*"]
+}
